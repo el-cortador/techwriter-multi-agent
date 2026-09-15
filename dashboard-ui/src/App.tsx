@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { authFetch, getApiKey, setApiKey, UnauthorizedError } from "./auth";
 
 type Overview = {
   project_slug: string;
@@ -62,6 +63,8 @@ type ErrorItem = {
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
 export function App() {
+  const [apiKey, setCurrentApiKey] = useState(getApiKey());
+  const [unauthorized, setUnauthorized] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -69,14 +72,36 @@ export function App() {
   const [errors, setErrors] = useState<ErrorItem[]>([]);
 
   useEffect(() => {
+    if (!apiKey) {
+      return;
+    }
     void Promise.all([
       fetchJson<Overview>(`${API_BASE}/overview`).then(setOverview),
       fetchJson<{ items: ActivityItem[] }>(`${API_BASE}/activity`).then((data) => setActivity(data.items.reverse())),
       fetchJson<{ items: SessionItem[] }>(`${API_BASE}/sessions?limit=20`).then((data) => setSessions(data.items)),
       fetchJson<{ items: RunItem[] }>(`${API_BASE}/runs?limit=20`).then((data) => setRuns(data.items)),
       fetchJson<{ items: ErrorItem[] }>(`${API_BASE}/errors?limit=10`).then((data) => setErrors(data.items))
-    ]);
-  }, []);
+    ]).catch((error) => {
+      if (error instanceof UnauthorizedError) {
+        setUnauthorized(true);
+      } else {
+        throw error;
+      }
+    });
+  }, [apiKey]);
+
+  if (!apiKey || unauthorized) {
+    return (
+      <ApiKeyForm
+        showError={unauthorized}
+        onSubmit={(key) => {
+          setApiKey(key);
+          setUnauthorized(false);
+          setCurrentApiKey(key);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="page">
@@ -197,6 +222,44 @@ export function App() {
   );
 }
 
+function ApiKeyForm(props: { showError: boolean; onSubmit: (key: string) => void }) {
+  const [key, setKey] = useState("");
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = key.trim();
+    if (trimmed) {
+      props.onSubmit(trimmed);
+    }
+  }
+
+  return (
+    <div className="page">
+      <header className="hero">
+        <p className="eyebrow">Project Dashboard</p>
+        <h1>API key required</h1>
+        <p className="subtle">Enter the dashboard API key to view runs, sessions, tokens, and costs.</p>
+      </header>
+      <div className="panel auth-panel">
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <input
+            className="auth-input"
+            type="password"
+            placeholder="X-API-Key"
+            value={key}
+            onChange={(event) => setKey(event.target.value)}
+            autoFocus
+          />
+          <button className="auth-button" type="submit">
+            Continue
+          </button>
+        </form>
+        {props.showError && <p className="auth-error">Invalid API key. Please try again.</p>}
+      </div>
+    </div>
+  );
+}
+
 function Panel(props: { title: string; children: ReactNode }) {
   return (
     <div className="panel">
@@ -241,7 +304,7 @@ function Table(props: { headers: string[]; rows: string[][] }) {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const response = await authFetch(url);
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
