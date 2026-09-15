@@ -90,6 +90,8 @@ Telemetry and dashboard:
 - `DASHBOARD_PORT`
 - `DASHBOARD_API_KEY` — required by `dashboard-api`; requests to `/api/*` must send it as
   the `X-API-Key` header (`/health` is exempt)
+- `DASHBOARD_ALLOWED_ORIGINS` — CSV list of origins allowed by `dashboard-api` CORS,
+  defaults to `http://127.0.0.1:4173`
 
 ## Pricing Configuration
 

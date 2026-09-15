@@ -61,6 +61,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/agent_dashboard}
       PROJECT_SLUG: ${PROJECT_SLUG:-techwriter-super-agent}
       DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-}
+      DASHBOARD_ALLOWED_ORIGINS: ${DASHBOARD_ALLOWED_ORIGINS:-http://127.0.0.1:4173}
     networks:
       - agent-network
     restart: unless-stopped

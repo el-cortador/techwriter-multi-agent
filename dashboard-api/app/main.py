@@ -11,8 +11,22 @@ from psycopg.rows import dict_row
 from app.auth import DASHBOARD_API_KEY, require_api_key
 
 
+def _csv_strings(name: str, default: str = "") -> list[str]:
+    raw = os.getenv(name, default)
+    values: list[str] = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        values.append(item)
+    return values
+
+
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 PROJECT_SLUG = os.getenv("PROJECT_SLUG", "techwriter-super-agent")
+DASHBOARD_ALLOWED_ORIGINS = _csv_strings(
+    "DASHBOARD_ALLOWED_ORIGINS", "http://127.0.0.1:4173"
+)
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS sessions (
     id BIGSERIAL PRIMARY KEY,
@@ -90,7 +104,7 @@ CREATE TABLE IF NOT EXISTS events (
 app = FastAPI(title="Agent Dashboard API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=DASHBOARD_ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
