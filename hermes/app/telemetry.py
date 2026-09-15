@@ -306,9 +306,9 @@ def record_llm_call(
 
 
 def _connect():
-    from psycopg import connect
+    from app.db import get_pool
 
-    return connect(config.DATABASE_URL)
+    return get_pool().connection()
 
 
 def _dict_row():

@@ -8,10 +8,10 @@ from alembic import command
 from alembic.config import Config
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from psycopg import connect
 from psycopg.rows import dict_row
 
 from app.auth import DASHBOARD_API_KEY, require_api_key
+from app.db import get_pool
 
 
 def _csv_strings(name: str, default: str = "") -> list[str]:
@@ -25,7 +25,6 @@ def _csv_strings(name: str, default: str = "") -> list[str]:
     return values
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
 PROJECT_SLUG = os.getenv("PROJECT_SLUG", "techwriter-super-agent")
 DASHBOARD_ALLOWED_ORIGINS = _csv_strings(
     "DASHBOARD_ALLOWED_ORIGINS", "http://127.0.0.1:4173"
@@ -250,9 +249,7 @@ app.include_router(api_router)
 
 
 def _connect():
-    if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is not set")
-    return connect(DATABASE_URL)
+    return get_pool().connection()
 
 
 def _normalize_row(row: dict) -> dict:

@@ -9,4 +9,5 @@ python-docx>=1.1
 olefile>=0.47
 requests>=2.32
 psycopg[binary]>=3.2
+psycopg_pool>=3.2
 alembic>=1.13
