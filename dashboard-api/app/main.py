@@ -4,6 +4,8 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg import connect
@@ -28,11 +30,12 @@ PROJECT_SLUG = os.getenv("PROJECT_SLUG", "techwriter-super-agent")
 DASHBOARD_ALLOWED_ORIGINS = _csv_strings(
     "DASHBOARD_ALLOWED_ORIGINS", "http://127.0.0.1:4173"
 )
-def _schema_sql() -> str:
-    schema_path = Path("/app/db/schema.sql")
-    if not schema_path.exists():
-        schema_path = Path(__file__).resolve().parents[2] / "db" / "schema.sql"
-    return schema_path.read_text(encoding="utf-8")
+def _alembic_config() -> Config:
+    ini_path = Path("/app/db/alembic.ini")
+    if not ini_path.exists():
+        ini_path = Path(__file__).resolve().parents[2] / "db" / "alembic.ini"
+    return Config(str(ini_path))
+
 
 app = FastAPI(title="Agent Dashboard API")
 app.add_middleware(
@@ -50,10 +53,7 @@ api_router = APIRouter(prefix="/api", dependencies=[Depends(require_api_key)])
 def startup() -> None:
     if not DASHBOARD_API_KEY:
         raise RuntimeError("DASHBOARD_API_KEY is not set")
-    with _connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_schema_sql())
-        conn.commit()
+    command.upgrade(_alembic_config(), "head")
 
 
 @app.get("/health")

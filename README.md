@@ -18,10 +18,8 @@ This repository is currently suitable for:
 This repository is not yet packaged as a hardened public SaaS or multi-tenant release.
 
 Current alpha limitations:
-- no authentication on the dashboard UI/API
 - no historical backfill for pre-telemetry sessions
 - model pricing is configured manually through env vars
-- Postgres schema is created at runtime, without a separate migration workflow
 - Discord is the only production-wired input channel in this repository
 
 ## Services

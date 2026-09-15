@@ -52,9 +52,30 @@
 
 ## Дашборд пустой / нет данных
 
-- Причина: `DATABASE_URL` недоступен или схема еще не создана (создается при первом run).
+- Причина: `DATABASE_URL` недоступен или схема еще не создана (создается миграциями Alembic
+  при первом старте `hermes-discord`/`dashboard-api`, см. «Ошибка миграции Alembic» ниже).
   Исправление: убедиться, что `postgres` в `running`, отправить любой запрос боту, обновить дашборд.
 - Причина: запросы были до включения телеметрии. Backfill не поддерживается (alpha-ограничение).
+
+## Дашборд: «API key required» / запрос к `/api/*` вернул 401
+
+- Причина: в `dashboard-ui` не введён или неверен ключ. Исправление: взять значение
+  `DASHBOARD_API_KEY` из `.env` и ввести его на экране входа.
+- Причина: `DASHBOARD_API_KEY` в `.env` пуст. Исправление: задать значение и
+  `docker compose up -d dashboard-api` (сервис откажется стартовать с пустым ключом).
+
+## Ошибка миграции Alembic при старте (`hermes-discord` / `dashboard-api` не поднимаются)
+
+- Причина: `DATABASE_URL` указывает не на ту БД, либо Postgres еще не готов принимать
+  соединения. Исправление: `hermes-discord` уже повторяет `alembic upgrade head` 10 раз с
+  паузой — подождать; если не помогает, проверить `docker compose logs postgres`.
+- Причина: схема была создана вручную/старым кодом (до Alembic) и отличается от
+  `db/migrations/versions/d4b6fd9bff93_baseline_schema.py`. Исправление: проверить
+  `SELECT * FROM alembic_version;` — если таблицы `sessions`/`runs`/… уже существуют, а
+  строки `alembic_version` нет, миграция безопасно доотметит текущую версию, так как
+  baseline использует `CREATE TABLE IF NOT EXISTS`/`CREATE INDEX IF NOT EXISTS`.
+- Проверка вручную из корня репозитория:
+  `DATABASE_URL=... .venv/Scripts/python -m alembic -c db/alembic.ini current`.
 
 ## «Skill instructions not found: /app/skills/...»
 

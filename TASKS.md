@@ -120,7 +120,7 @@
 
 ---
 
-### - [ ] 1.2. Alembic-миграции
+### - [x] 1.2. Alembic-миграции
 
 **Описание:** версионирование схемы вместо `CREATE TABLE IF NOT EXISTS` при каждом старте.
 
@@ -547,3 +547,15 @@
   `DASHBOARD_ALLOWED_ORIGINS` — они были дописаны в конец файла со сгенерированным значением
   ключа, чтобы уже работающий локальный стек (`docker compose`, поднят задолго до этой сессии)
   не упал при следующем перезапуске `dashboard-api` из-за fail-closed поведения из задачи 0.1.
+- **1.2.** `db/schema.sql` оставлен как источник SQL для baseline-ревизии (сама baseline-
+  ревизия читает его в рантайме через `Path(...).read_text()`, а не дублирует SQL инлайном) —
+  так и `db/schema.sql`, и `db/migrations/versions/..._baseline_schema.py` не расходятся.
+  После первой не-baseline миграции `schema.sql` можно превратить в чисто справочный дамп.
+- **1.2.** `hermes/app/telemetry.py: initialize()` и `dashboard-api/app/main.py: startup()`
+  вызывают `alembic.command.upgrade(cfg, "head")` из кода (не через `subprocess`), чтобы не
+  тащить `alembic` CLI отдельным процессом в рантайм-образ.
+- **1.2.** `db/migrations/env.py` переписывает `DATABASE_URL` (`postgresql://` →
+  `postgresql+psycopg://`) для SQLAlchemy, чтобы использовать уже установленный psycopg 3
+  (проект не использует psycopg2).
+- **1.2.** Проверено на реальном локальном стеке с прод-данными (30 runs): `upgrade head`,
+  `downgrade -1` (no-op, данные и таблицы не тронуты), повторный `upgrade head` — без потерь.

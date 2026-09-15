@@ -9,16 +9,19 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from alembic import command
+from alembic.config import Config
+
 from app import config
 
 logger = logging.getLogger(__name__)
 
 
-def _schema_sql() -> str:
-    schema_path = Path("/app/db/schema.sql")
-    if not schema_path.exists():
-        schema_path = Path(__file__).resolve().parents[2] / "db" / "schema.sql"
-    return schema_path.read_text(encoding="utf-8")
+def _alembic_config() -> Config:
+    ini_path = Path("/app/db/alembic.ini")
+    if not ini_path.exists():
+        ini_path = Path(__file__).resolve().parents[2] / "db" / "alembic.ini"
+    return Config(str(ini_path))
 
 
 def is_enabled() -> bool:
@@ -32,10 +35,7 @@ def initialize() -> None:
     last_error: Exception | None = None
     for attempt in range(10):
         try:
-            with _connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_schema_sql())
-                conn.commit()
+            command.upgrade(_alembic_config(), "head")
             return
         except Exception as exc:
             last_error = exc

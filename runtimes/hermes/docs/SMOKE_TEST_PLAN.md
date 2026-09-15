@@ -21,6 +21,12 @@ docker compose ps
 - [ ] Все 4 сервиса в статусе `running`: `hermes-discord`, `postgres`, `dashboard-api`, `dashboard-ui`.
 - [ ] В логах `hermes-discord` есть строка `Hermes Discord gateway logged in as ...`:
       `docker compose logs hermes-discord`
+- [ ] Схема БД создаётся через Alembic-миграции (не `CREATE TABLE IF NOT EXISTS` на каждый
+      старт): в логах `hermes-discord` и `dashboard-api` есть
+      `Running upgrade  -> d4b6fd9bff93, baseline schema` при первом запуске на чистой БД;
+      при повторном запуске — без строки `Running upgrade`, только `Context impl PostgresqlImpl`.
+- [ ] `SELECT version_num FROM alembic_version;` в `postgres` возвращает текущую head-ревизию:
+      `docker compose exec postgres psql -U postgres -d agent_dashboard -c "SELECT * FROM alembic_version;"`
 
 ## 3. Discord end-to-end
 
@@ -39,7 +45,10 @@ docker compose ps
 
 ## 4. Дашборд
 
-- [ ] `http://127.0.0.1:4173` открывается, без авторизации (alpha).
+- [ ] `http://127.0.0.1:4173` открывается, показывает форму ввода `X-API-Key` вместо графиков,
+      пока ключ не введён.
+- [ ] После ввода `DASHBOARD_API_KEY` из `.env` дашборд показывает данные без ошибок.
+- [ ] `curl http://127.0.0.1:<dashboard-api-порт>/api/overview` без заголовка `X-API-Key` → `401`.
 - [ ] После шагов из раздела 3 в Overview появляются runs/sessions; в Recent errors — пусто (если не было ошибок).
 
 ## 5. Отказоустойчивость

@@ -10,5 +10,7 @@ RUN pip install --no-cache-dir --timeout 60 --retries 10 --index-url "${PIP_INDE
 COPY hermes/app/ /app/app/
 COPY runtimes/hermes/skills/ /app/skills/
 COPY db/schema.sql /app/db/schema.sql
+COPY db/alembic.ini /app/db/alembic.ini
+COPY db/migrations/ /app/db/migrations/
 
 CMD ["python", "-m", "app.main"]
