@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,79 +28,11 @@ PROJECT_SLUG = os.getenv("PROJECT_SLUG", "techwriter-super-agent")
 DASHBOARD_ALLOWED_ORIGINS = _csv_strings(
     "DASHBOARD_ALLOWED_ORIGINS", "http://127.0.0.1:4173"
 )
-SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS sessions (
-    id BIGSERIAL PRIMARY KEY,
-    project_slug TEXT NOT NULL,
-    source TEXT NOT NULL,
-    external_session_id TEXT NOT NULL,
-    guild_id TEXT,
-    channel_id TEXT,
-    user_id TEXT,
-    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    UNIQUE (project_slug, source, external_session_id)
-);
-CREATE TABLE IF NOT EXISTS runs (
-    id BIGSERIAL PRIMARY KEY,
-    session_id BIGINT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    project_slug TEXT NOT NULL,
-    source TEXT NOT NULL,
-    route_kind TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'running',
-    model_name TEXT,
-    provider TEXT,
-    temperature DOUBLE PRECISION,
-    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at TIMESTAMPTZ,
-    duration_ms INTEGER,
-    input_chars INTEGER NOT NULL DEFAULT 0,
-    output_chars INTEGER NOT NULL DEFAULT 0,
-    input_tokens INTEGER NOT NULL DEFAULT 0,
-    output_tokens INTEGER NOT NULL DEFAULT 0,
-    total_tokens INTEGER NOT NULL DEFAULT 0,
-    total_cost_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
-    error_code TEXT,
-    error_message TEXT,
-    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb
-);
-CREATE TABLE IF NOT EXISTS llm_calls (
-    id BIGSERIAL PRIMARY KEY,
-    run_id BIGINT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-    project_slug TEXT NOT NULL,
-    provider TEXT,
-    model_name TEXT,
-    request_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    response_finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    latency_ms INTEGER,
-    prompt_tokens INTEGER NOT NULL DEFAULT 0,
-    completion_tokens INTEGER NOT NULL DEFAULT 0,
-    total_tokens INTEGER NOT NULL DEFAULT 0,
-    cost_input_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
-    cost_output_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
-    cost_total_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
-    raw_response_id TEXT,
-    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb
-);
-CREATE TABLE IF NOT EXISTS attachments (
-    id BIGSERIAL PRIMARY KEY,
-    run_id BIGINT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-    filename TEXT NOT NULL,
-    content_type TEXT,
-    size_bytes BIGINT,
-    storage_path TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS events (
-    id BIGSERIAL PRIMARY KEY,
-    run_id BIGINT REFERENCES runs(id) ON DELETE CASCADE,
-    project_slug TEXT NOT NULL,
-    event_type TEXT NOT NULL,
-    payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-"""
+def _schema_sql() -> str:
+    schema_path = Path("/app/db/schema.sql")
+    if not schema_path.exists():
+        schema_path = Path(__file__).resolve().parents[2] / "db" / "schema.sql"
+    return schema_path.read_text(encoding="utf-8")
 
 app = FastAPI(title="Agent Dashboard API")
 app.add_middleware(
@@ -119,7 +52,7 @@ def startup() -> None:
         raise RuntimeError("DASHBOARD_API_KEY is not set")
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(SCHEMA_SQL)
+            cur.execute(_schema_sql())
         conn.commit()
 
 
