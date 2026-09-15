@@ -16,6 +16,7 @@ install.sh              Установка на Linux/macOS (зеркало inst
 scripts/
   verify-install.ps1    Проверка установки (OK/WARN/FAIL, код выхода 1 при FAIL)
   verify-install.sh     Зеркало для Linux/macOS
+  purge-telemetry.py    Ретеншн: удаляет старые events/llm_calls (кроссплатформенный)
 docs/
   SMOKE_TEST_PLAN.md    Ручная проверка после установки/обновления
   TROUBLESHOOTING.md    Симптом → причина → исправление
@@ -62,6 +63,28 @@ docker compose up -d --build
 runtimes\hermes\scripts\verify-install.ps1   # установка
 # smoke test — по чек-листу docs/SMOKE_TEST_PLAN.md
 ```
+
+## Ретеншн телеметрии
+
+`events` и `llm_calls` хранят подробный лог по каждому запросу/LLM-вызову и растут быстрее,
+чем `sessions`/`runs`. `scripts/purge-telemetry.py` удаляет из них строки старше N дней
+(агрегаты в `runs.total_tokens`/`runs.total_cost_usd` не трогает — они уже посчитаны).
+
+Разово, локально (нужен `.env` с `DATABASE_URL`):
+
+```powershell
+.venv\Scripts\python runtimes\hermes\scripts\purge-telemetry.py 90
+```
+
+Внутри уже запущенного стека:
+
+```powershell
+docker compose exec hermes-discord python scripts/purge-telemetry.py 90
+```
+
+Без аргумента скрипт берет `TELEMETRY_RETENTION_DAYS` из окружения (по умолчанию 90).
+Для регулярного запуска — обычный cron/Task Scheduler на хосте, вызывающий команду выше;
+отдельного сервиса в `docker-compose.yml` под это не заводится.
 
 ## Пути
 

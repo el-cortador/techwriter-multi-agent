@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -303,6 +303,26 @@ def record_llm_call(
                 (prompt_tokens, completion_tokens, total_tokens, total_cost, run_id),
             )
         conn.commit()
+
+
+def purge_old_events(days: int) -> int:
+    """Delete events and llm_calls older than `days`. Returns rows deleted.
+
+    Aggregate run stats (runs.total_tokens, runs.total_cost_usd, ...) are not
+    affected — only the detailed event/llm_call rows are trimmed.
+    """
+    if not is_enabled():
+        return 0
+    cutoff = _utcnow() - timedelta(days=days)
+    deleted = 0
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM events WHERE created_at < %s", (cutoff,))
+            deleted += cur.rowcount
+            cur.execute("DELETE FROM llm_calls WHERE request_started_at < %s", (cutoff,))
+            deleted += cur.rowcount
+        conn.commit()
+    return deleted
 
 
 def _connect():

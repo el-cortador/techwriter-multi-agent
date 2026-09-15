@@ -163,7 +163,7 @@
 
 ---
 
-### - [ ] 1.4. Retention-задача
+### - [x] 1.4. Retention-задача
 
 **Описание:** периодическая очистка старых `events`/`llm_calls`.
 
@@ -566,3 +566,15 @@
   30 и затем 50 параллельных запросов к `/api/overview` держат 5 соединений к Postgres
   (не растёт пропорционально N); write-путь telemetry (`ensure_session` → `start_run` →
   `complete_run`) через пул тоже проверен на реальной БД.
+- **1.4.** `purge_old_events` чистит `events` (по `created_at`) и `llm_calls` (по
+  `request_started_at` — в этой таблице нет колонки `created_at`); агрегаты в `runs`
+  (`total_tokens`, `total_cost_usd`, …) не трогает, они уже посчитаны при записи.
+  Автотест на `purge_old_events` не добавлен в этом коммите — модуль `telemetry.py` пока не
+  имеет testcontainers-фикстуры (её по плану вводит задача 4.2 для всех публичных функций
+  сразу). Вместо этого функция и скрипт проверены вручную на реальном локальном Postgres
+  с прод-данными: созданы события/llm_calls со старой (100 дней) и свежей (1 день) датой,
+  `purge_old_events(90)` удалил только старые, тестовые строки убраны после проверки.
+- **1.4.** `runtimes/hermes/scripts/purge-telemetry.py` — один Python-скрипт без отдельных
+  `.sh`/`.ps1`-обёрток (сам по себе кроссплатформенный). Скопирован в образ
+  `hermes-discord` (`/app/scripts/purge-telemetry.py`) для запуска через
+  `docker compose exec hermes-discord python scripts/purge-telemetry.py`.
