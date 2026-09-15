@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 from decimal import Decimal
 
-from fastapi import FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg import connect
 from psycopg.rows import dict_row
+
+from app.auth import DASHBOARD_API_KEY, require_api_key
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -94,9 +96,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+api_router = APIRouter(prefix="/api", dependencies=[Depends(require_api_key)])
+
 
 @app.on_event("startup")
 def startup() -> None:
+    if not DASHBOARD_API_KEY:
+        raise RuntimeError("DASHBOARD_API_KEY is not set")
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(SCHEMA_SQL)
@@ -108,7 +114,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/overview")
+@api_router.get("/overview")
 def overview() -> dict:
     with _connect() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -159,7 +165,7 @@ def overview() -> dict:
     }
 
 
-@app.get("/api/activity")
+@api_router.get("/activity")
 def activity() -> dict:
     with _connect() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -182,7 +188,7 @@ def activity() -> dict:
     return {"items": [_normalize_row(row) for row in rows]}
 
 
-@app.get("/api/sessions")
+@api_router.get("/sessions")
 def sessions(limit: int = 50, offset: int = 0) -> dict:
     with _connect() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -213,7 +219,7 @@ def sessions(limit: int = 50, offset: int = 0) -> dict:
     return {"items": [_normalize_row(row) for row in rows]}
 
 
-@app.get("/api/runs")
+@api_router.get("/runs")
 def runs(limit: int = 100, offset: int = 0) -> dict:
     with _connect() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -250,7 +256,7 @@ def runs(limit: int = 100, offset: int = 0) -> dict:
     return {"items": [_normalize_row(row) for row in rows]}
 
 
-@app.get("/api/errors")
+@api_router.get("/errors")
 def errors(limit: int = 50) -> dict:
     with _connect() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -275,7 +281,7 @@ def errors(limit: int = 50) -> dict:
     return {"items": [_normalize_row(row) for row in rows]}
 
 
-@app.get("/api/run-events/{run_id}")
+@api_router.get("/run-events/{run_id}")
 def run_events(run_id: int) -> dict:
     with _connect() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -291,6 +297,9 @@ def run_events(run_id: int) -> dict:
             )
             rows = cur.fetchall()
     return {"items": [_normalize_row(row) for row in rows]}
+
+
+app.include_router(api_router)
 
 
 def _connect():

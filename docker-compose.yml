@@ -60,6 +60,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/agent_dashboard}
       PROJECT_SLUG: ${PROJECT_SLUG:-techwriter-super-agent}
+      DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-}
     networks:
       - agent-network
     restart: unless-stopped

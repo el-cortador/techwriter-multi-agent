@@ -88,6 +88,8 @@ Telemetry and dashboard:
 - `POSTGRES_PASSWORD`
 - `DATABASE_URL`
 - `DASHBOARD_PORT`
+- `DASHBOARD_API_KEY` — required by `dashboard-api`; requests to `/api/*` must send it as
+  the `X-API-Key` header (`/health` is exempt)
 
 ## Pricing Configuration
 
