@@ -19,11 +19,25 @@ else
   echo "  [warn] docker не найден в PATH. Установите Docker перед запуском."
 fi
 
+generate_secret() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32
+  else
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+  fi
+}
+
 if [ -f "$REPO_ROOT/.env" ]; then
   echo "  [skip] .env уже существует — не перезаписываю"
 else
   cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
-  echo "  [ok] создан .env из .env.example"
+  postgres_password="$(generate_secret)"
+  dashboard_api_key="$(generate_secret)"
+  sed -i.bak "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${postgres_password}/" "$REPO_ROOT/.env"
+  sed -i.bak "s/^DASHBOARD_API_KEY=.*/DASHBOARD_API_KEY=${dashboard_api_key}/" "$REPO_ROOT/.env"
+  sed -i.bak "s#^DATABASE_URL=.*#DATABASE_URL=postgresql://postgres:${postgres_password}@postgres:5432/agent_dashboard#" "$REPO_ROOT/.env"
+  rm -f "$REPO_ROOT/.env.bak"
+  echo "  [ok] создан .env из .env.example (сгенерированы POSTGRES_PASSWORD и DASHBOARD_API_KEY)"
 fi
 
 if [ -d "$REPO_ROOT/hermes/state" ]; then

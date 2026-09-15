@@ -29,6 +29,18 @@ if (Test-Path $EnvFile) {
     if ($envContent -match "(?m)^$key=\S+") { Report 'OK' "$key задан (опционально)" }
     else { Report 'WARN' "$key не задан — связанные сценарии будут недоступны" }
   }
+  if ($envContent -match '(?m)^POSTGRES_PASSWORD=postgres\s*$') {
+    Report 'FAIL' "POSTGRES_PASSWORD всё ещё дефолтный 'postgres' — .env создан вручную из старого .env.example, замените пароль"
+  } elseif ($envContent -match '(?m)^POSTGRES_PASSWORD=\S+') {
+    Report 'OK' 'POSTGRES_PASSWORD не дефолтный'
+  } else {
+    Report 'FAIL' 'POSTGRES_PASSWORD не задан в .env'
+  }
+  if ($envContent -match '(?m)^DASHBOARD_API_KEY=\S+') {
+    Report 'OK' 'DASHBOARD_API_KEY задан'
+  } else {
+    Report 'FAIL' 'DASHBOARD_API_KEY не задан в .env — dashboard-api откажется стартовать'
+  }
 } else {
   Report 'FAIL' '.env не найден. Запустите runtimes\hermes\install.ps1'
 }

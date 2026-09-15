@@ -22,6 +22,18 @@ if [ -f "$REPO_ROOT/.env" ]; then
   for key in GITHUB_TOKEN GITLAB_TOKEN JIRA_API_TOKEN FIGMA_TOKEN; do
     if grep -qE "^${key}=.+" "$REPO_ROOT/.env"; then report OK "$key задан (опционально)"; else report WARN "$key не задан — связанные сценарии будут недоступны"; fi
   done
+  if grep -qE "^POSTGRES_PASSWORD=postgres\s*$" "$REPO_ROOT/.env"; then
+    report FAIL "POSTGRES_PASSWORD всё ещё дефолтный 'postgres' — .env создан вручную из старого .env.example, замените пароль"
+  elif grep -qE "^POSTGRES_PASSWORD=.+" "$REPO_ROOT/.env"; then
+    report OK "POSTGRES_PASSWORD не дефолтный"
+  else
+    report FAIL "POSTGRES_PASSWORD не задан в .env"
+  fi
+  if grep -qE "^DASHBOARD_API_KEY=.+" "$REPO_ROOT/.env"; then
+    report OK "DASHBOARD_API_KEY задан"
+  else
+    report FAIL "DASHBOARD_API_KEY не задан в .env — dashboard-api откажется стартовать"
+  fi
 else
   report FAIL ".env не найден. Запустите runtimes/hermes/install.sh"
 fi

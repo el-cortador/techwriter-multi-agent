@@ -24,13 +24,24 @@ if ($docker) {
   Write-Host "  [warn] docker не найден в PATH. Установите Docker Desktop перед запуском."
 }
 
+function New-Secret {
+  ((New-Guid).ToString('N') + (New-Guid).ToString('N'))
+}
+
 $EnvExample = Join-Path $RepoRoot '.env.example'
 $EnvFile = Join-Path $RepoRoot '.env'
 if (Test-Path $EnvFile) {
   Write-Host "  [skip] .env уже существует — не перезаписываю"
 } else {
   Copy-Item $EnvExample $EnvFile
-  Write-Host "  [ok] создан .env из .env.example"
+  $postgresPassword = New-Secret
+  $dashboardApiKey = New-Secret
+  $content = Get-Content $EnvFile -Raw
+  $content = $content -replace '(?m)^POSTGRES_PASSWORD=.*', "POSTGRES_PASSWORD=$postgresPassword"
+  $content = $content -replace '(?m)^DASHBOARD_API_KEY=.*', "DASHBOARD_API_KEY=$dashboardApiKey"
+  $content = $content -replace '(?m)^DATABASE_URL=.*', "DATABASE_URL=postgresql://postgres:$postgresPassword@postgres:5432/agent_dashboard"
+  Set-Content -Path $EnvFile -Value $content -NoNewline -Encoding utf8
+  Write-Host "  [ok] создан .env из .env.example (сгенерированы POSTGRES_PASSWORD и DASHBOARD_API_KEY)"
 }
 
 $StateDir = Join-Path $RepoRoot 'hermes\state'
