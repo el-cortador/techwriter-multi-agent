@@ -49,7 +49,12 @@ LLM_COST_OUTPUT_PER_1M: Decimal = Decimal(os.getenv("LLM_COST_OUTPUT_PER_1M", "0
 VISION_COST_INPUT_PER_1M: Decimal = Decimal(os.getenv("VISION_COST_INPUT_PER_1M", "0"))
 VISION_COST_OUTPUT_PER_1M: Decimal = Decimal(os.getenv("VISION_COST_OUTPUT_PER_1M", "0"))
 
-STATE_DIR: Path = Path(os.getenv("HERMES_STATE_DIR", "/app/state"))
+_state_dir_env = os.getenv("HERMES_STATE_DIR", "")
+STATE_DIR: Path = (
+    Path(_state_dir_env)
+    if _state_dir_env
+    else Path(__file__).resolve().parents[2] / "hermes" / "state"
+)
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 
 _skills_dir_env = os.getenv("HERMES_SKILLS_DIR", "")
