@@ -13,6 +13,7 @@ from pathlib import Path
 import discord
 
 from app import config, telemetry
+from app.healthcheck import start_healthcheck_server
 from app.models import IncomingAttachment, IncomingMessage
 from app.router import classify
 from app.skills.runner import SkillError, run_route
@@ -21,8 +22,37 @@ from app.vision import describe_ui_screenshot
 
 logger = logging.getLogger(__name__)
 
+HEARTBEAT_INTERVAL_SECONDS = 60
+
 
 class HermesDiscordClient(discord.Client):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._health_runner: object | None = None
+        self._heartbeat_task: asyncio.Task | None = None
+
+    async def setup_hook(self) -> None:
+        self._health_runner = await start_healthcheck_server(self)
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def close(self) -> None:
+        if self._heartbeat_task is not None:
+            self._heartbeat_task.cancel()
+        if self._health_runner is not None:
+            await self._health_runner.cleanup()
+        await super().close()
+
+    async def _heartbeat_loop(self) -> None:
+        while True:
+            await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+            latency_ms = self.latency * 1000 if self.latency == self.latency else None  # NaN before first ack
+            logger.info(
+                "heartbeat: connected=%s latency_ms=%s",
+                self.is_ready(),
+                f"{latency_ms:.0f}" if latency_ms is not None else "n/a",
+                extra={"service": "hermes-discord", "event": "heartbeat", "connected": self.is_ready()},
+            )
+
     async def on_ready(self) -> None:
         logger.info("Hermes Discord gateway logged in as %s", self.user, extra={"service": "hermes-discord"})
 
