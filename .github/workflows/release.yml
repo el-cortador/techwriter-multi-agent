@@ -65,6 +65,11 @@ jobs:
               found { print }
             ' CHANGELOG.md > release-notes.md
           else
+            echo "::group::debug: tag detection"
+            git tag -l
+            echo "GITHUB_REF_NAME=${GITHUB_REF_NAME}"
+            git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" || echo "git describe failed: exit $?"
+            echo "::endgroup::"
             previous_tag="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
             {
               echo "CHANGELOG.md has no [$version] section yet — notes generated from commit messages."
