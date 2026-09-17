@@ -51,11 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Ensure full, connected tag history
-        run: git fetch --tags --force --unshallow origin || git fetch --tags --force origin
+          fetch-depth: 50
 
       - name: Build release notes
         run: |
@@ -68,26 +64,15 @@ jobs:
               found { print }
             ' CHANGELOG.md > release-notes.md
           else
-            # Nearest lower version tag by name, not by commit-graph ancestry —
-            # git describe needs a fully connected history that a checkout's
-            # partial/shallow tag fetch does not reliably provide in CI.
-            echo "::group::debug: tag list and previous_tag"
-            git tag -l
-            all_tags="$(git tag --sort=-v:refname)"
-            echo "sorted tags: $all_tags"
-            filtered="$(echo "$all_tags" | grep -vFx "${GITHUB_REF_NAME}" || true)"
-            echo "after excluding current: $filtered"
-            previous_tag="$(echo "$filtered" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-            echo "previous_tag=[$previous_tag]"
-            echo "::endgroup::"
+            # Fallback until CHANGELOG.md has a section for this version (task 6.1):
+            # just the recent commit log, not a precisely bounded "since last tag"
+            # range — this repo's older tags aren't reliably graph-connected in a
+            # fresh CI checkout, which makes both `git describe` and `git log A..B`
+            # unreliable for them.
             {
-              echo "CHANGELOG.md has no [$version] section yet — notes generated from commit messages."
+              echo "CHANGELOG.md has no [$version] section yet — notes generated from recent commit messages."
               echo
-              if [ -n "$previous_tag" ]; then
-                git log --pretty=format:"- %s" "${previous_tag}..${GITHUB_REF_NAME}"
-              else
-                git log --pretty=format:"- %s" "${GITHUB_REF_NAME}"
-              fi
+              git log --pretty=format:"- %s" -n 25
             } > release-notes.md
           fi
 
