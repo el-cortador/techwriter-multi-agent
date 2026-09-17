@@ -71,7 +71,15 @@ jobs:
             # Nearest lower version tag by name, not by commit-graph ancestry —
             # git describe needs a fully connected history that a checkout's
             # partial/shallow tag fetch does not reliably provide in CI.
-            previous_tag="$(git tag --sort=-v:refname | grep -vFx "${GITHUB_REF_NAME}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+            echo "::group::debug: tag list and previous_tag"
+            git tag -l
+            all_tags="$(git tag --sort=-v:refname)"
+            echo "sorted tags: $all_tags"
+            filtered="$(echo "$all_tags" | grep -vFx "${GITHUB_REF_NAME}" || true)"
+            echo "after excluding current: $filtered"
+            previous_tag="$(echo "$filtered" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+            echo "previous_tag=[$previous_tag]"
+            echo "::endgroup::"
             {
               echo "CHANGELOG.md has no [$version] section yet — notes generated from commit messages."
               echo
