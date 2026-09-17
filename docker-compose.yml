@@ -38,6 +38,7 @@ services:
       FIGMA_TOKEN: ${FIGMA_TOKEN:-}
       FIGMA_API_BASE: ${FIGMA_API_BASE:-https://api.figma.com/v1}
       REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-15}
+      LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-60}
       MAX_TOKENS: ${MAX_TOKENS:-4096}
       PROJECT_SLUG: ${PROJECT_SLUG:-techwriter-super-agent}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/agent_dashboard}

@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from app import config, telemetry
 from app.models import IncomingAttachment
+from app.skills.llm import create_chat_completion
 from app.skills.loader import load_instructions
 from app.skills.runner import SkillError
 from app.telemetry_context import get_current_run_id
@@ -27,9 +28,11 @@ def describe_ui_screenshot(attachment: IncomingAttachment, user_text: str) -> st
     client = OpenAI(
         api_key=config.OPENROUTER_API_KEY,
         base_url="https://openrouter.ai/api/v1",
+        timeout=config.LLM_REQUEST_TIMEOUT,
     )
     started_at = time.time()
-    response = client.chat.completions.create(
+    response = create_chat_completion(
+        client,
         model=config.HERMES_VISION_MODEL,
         messages=[
             {

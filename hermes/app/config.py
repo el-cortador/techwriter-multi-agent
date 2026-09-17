@@ -38,6 +38,7 @@ JIRA_API_TOKEN: str = os.getenv("JIRA_API_TOKEN", "")
 FIGMA_TOKEN: str = os.getenv("FIGMA_TOKEN", "")
 FIGMA_API_BASE: str = os.getenv("FIGMA_API_BASE", "https://api.figma.com/v1")
 REQUEST_TIMEOUT: float = float(os.getenv("REQUEST_TIMEOUT", "15"))
+LLM_REQUEST_TIMEOUT: float = float(os.getenv("LLM_REQUEST_TIMEOUT", "60"))
 RELEASE_NOTES_MAX_TOKENS: int = int(os.getenv("MAX_TOKENS", "4096"))
 
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
