@@ -21,7 +21,13 @@ def _alembic_config() -> Config:
     ini_path = Path("/app/db/alembic.ini")
     if not ini_path.exists():
         ini_path = Path(__file__).resolve().parents[2] / "db" / "alembic.ini"
-    return Config(str(ini_path))
+    # No file_= here on purpose: passing the ini path makes Alembic's env.py call
+    # logging.config.fileConfig() on it, which resets the root logger (and its level
+    # to WARNING) for the whole process — silently killing our own JSON logging for
+    # everything logged after startup. script_location is the only setting we need.
+    config = Config()
+    config.set_main_option("script_location", str(ini_path.parent / "migrations"))
+    return config
 
 
 def is_enabled() -> bool:
