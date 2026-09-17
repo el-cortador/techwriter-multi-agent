@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import requests
 from requests.auth import HTTPBasicAuth
 
-from app import config
+from app import config, http_client
 from app.skills.llm import generate_text
 from app.skills.loader import load_instructions
 
@@ -117,7 +117,7 @@ def _get_commits(owner: str, repo: str, since: str, until: str, branch: str = ""
         if branch:
             params["sha"] = branch
         try:
-            response = requests.get(url, headers=headers, params=params, timeout=config.REQUEST_TIMEOUT)
+            response = http_client.get(url, headers=headers, params=params, timeout=config.REQUEST_TIMEOUT)
         except requests.RequestException as exc:
             raise ReleaseNotesError(f"Не удалось подключиться к GitHub: {exc}") from exc
         if response.status_code in (401, 403):
@@ -170,7 +170,7 @@ class JiraClient:
 
     def get_issue(self, base_url: str, key: str) -> dict:
         try:
-            response = requests.get(
+            response = http_client.get(
                 f"{base_url}/rest/api/3/issue/{key}",
                 auth=self._auth,
                 params={"fields": "summary,issuetype,status,description,labels,components,fixVersions"},

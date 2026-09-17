@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import requests
 
-from app import config
+from app import config, http_client
 from app.skills.documents import (
     ALLOWED_EXTENSIONS,
     MAX_FILE_SIZE,
@@ -185,7 +185,7 @@ def _gitlab_get(
     allow_missing: bool = False,
 ) -> dict | list | None:
     try:
-        response = requests.get(
+        response = http_client.get(
             f"{base_url}/api/v4/{path}",
             headers=_gitlab_headers(),
             params=params,

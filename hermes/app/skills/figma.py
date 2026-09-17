@@ -7,7 +7,7 @@ from typing import Any, Iterable
 
 import httpx
 
-from app import config
+from app import config, http_client
 from app.skills.llm import generate_text
 from app.skills.loader import load_instructions
 
@@ -67,10 +67,10 @@ class FigmaClient:
 
     def get_file(self, file_id: str, token: str) -> dict:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        response = self._client.get(f"/files/{file_id}", headers=headers)
+        response = http_client.httpx_get(self._client, f"/files/{file_id}", headers=headers)
         if response.status_code in (401, 403) and token:
             headers["X-FIGMA-TOKEN"] = token
-            response = self._client.get(f"/files/{file_id}", headers=headers)
+            response = http_client.httpx_get(self._client, f"/files/{file_id}", headers=headers)
         if response.status_code == 404:
             raise FigmaError("Figma-файл не найден")
         if response.status_code == 429:
