@@ -51,9 +51,39 @@ def generate_jira(
     issues = jira.get_issues(urls)
     if not issues:
         raise ReleaseNotesError("Не удалось распознать Jira URL")
-    logger.info("[release-notes] fetched jira issues=%d output_type=%s", len(issues), output_type)
+    if not _looks_like_release_notes(release_notes_text):
+        release_notes_text = ""
+    logger.info(
+        "[release-notes] fetched jira issues=%d output_type=%s mapping=%s",
+        len(issues),
+        output_type,
+        bool(release_notes_text),
+    )
     prompt = _jira_prompt(issues, output_type=output_type, release_notes_text=release_notes_text)
     return _llm_generate(prompt)
+
+
+_MENTION_RE = re.compile(r"<[@#][!&]?\d+>")
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•–]|\d+[.)])\s+\S")
+_MAPPING_KEYWORDS = ("сопостав", "mapping")
+
+
+def _looks_like_release_notes(text: str) -> bool:
+    """Tell a pasted Release Notes draft apart from a short request phrase.
+
+    Mapping mode needs actual release notes items to match against Jira
+    issues. A bot mention or a request like "make release notes for these
+    epics" must not switch the skill into mapping mode.
+    """
+    cleaned = _MENTION_RE.sub("", text)
+    lines = [line.strip() for line in cleaned.splitlines()]
+    content_lines = [line for line in lines if re.search(r"\w", line)]
+    if not content_lines:
+        return False
+    if any(keyword in cleaned.lower() for keyword in _MAPPING_KEYWORDS):
+        return True
+    list_items = [line for line in content_lines if _LIST_ITEM_RE.match(line)]
+    return len(list_items) >= 2 or len(content_lines) >= 3
 
 
 def _parse_repository(repository: str) -> tuple[str, str]:
@@ -160,6 +190,13 @@ _JIRA_HTTP_ERRORS = {
 }
 
 
+_JIRA_FIELDS = "summary,issuetype,status,description,labels,components,fixVersions"
+_EPIC_TYPE_NAMES = {"epic", "эпик"}
+_EPIC_HIERARCHY_LEVEL = 1
+_MAX_EPIC_CHILDREN = 100
+_CHILD_DESCRIPTION_LIMIT = 1500
+
+
 class JiraClient:
     def __init__(self, email: str = "", api_token: str = "") -> None:
         email = email or config.JIRA_EMAIL
@@ -169,13 +206,39 @@ class JiraClient:
         self._auth = HTTPBasicAuth(email, api_token)
 
     def get_issue(self, base_url: str, key: str) -> dict:
+        data = self._get_json(f"{base_url}/rest/api/3/issue/{key}", {"fields": _JIRA_FIELDS}, key)
+        return _issue_from_payload({"key": key, **data})
+
+    def get_epic_children(self, base_url: str, epic_key: str) -> list[dict]:
+        """Fetch child issues of an epic via JQL search (Jira Cloud, nextPageToken pagination)."""
+        children: list[dict] = []
+        params: dict = {"jql": f"parent = {epic_key} ORDER BY created ASC", "fields": _JIRA_FIELDS, "maxResults": 50}
+        while True:
+            data = self._get_json(f"{base_url}/rest/api/3/search/jql", params, epic_key)
+            children.extend(_issue_from_payload(item) for item in data.get("issues") or [])
+            next_token = data.get("nextPageToken")
+            if data.get("isLast", True) or not next_token:
+                break
+            if len(children) >= _MAX_EPIC_CHILDREN:
+                logger.warning("[release-notes] epic %s children truncated to %d", epic_key, _MAX_EPIC_CHILDREN)
+                break
+            params = {**params, "nextPageToken": next_token}
+        return children[:_MAX_EPIC_CHILDREN]
+
+    def get_issues(self, urls: list[str]) -> list[dict]:
+        pairs = [(base_url, key) for base_url, keys in _parse_jira_urls(urls).items() for key in keys]
+        issues = [(base_url, self.get_issue(base_url, key)) for base_url, key in pairs]
+        requested_keys = {issue["key"].upper() for _, issue in issues}
+        for base_url, issue in issues:
+            if issue.get("is_epic"):
+                children = self.get_epic_children(base_url, issue["key"])
+                # Issues the user linked explicitly are rendered on their own, not twice.
+                issue["children"] = [child for child in children if child["key"].upper() not in requested_keys]
+        return [issue for _, issue in issues]
+
+    def _get_json(self, url: str, params: dict, key: str) -> dict:
         try:
-            response = http_client.get(
-                f"{base_url}/rest/api/3/issue/{key}",
-                auth=self._auth,
-                params={"fields": "summary,issuetype,status,description,labels,components,fixVersions"},
-                timeout=config.REQUEST_TIMEOUT,
-            )
+            response = http_client.get(url, auth=self._auth, params=params, timeout=config.REQUEST_TIMEOUT)
             response.raise_for_status()
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else 0
@@ -185,22 +248,29 @@ class JiraClient:
             raise ReleaseNotesError(f"Jira API ошибка {status}") from exc
         except requests.RequestException as exc:
             raise ReleaseNotesError(f"Не удалось подключиться к Jira: {exc}") from exc
+        return response.json()
 
-        fields = response.json()["fields"]
-        return {
-            "key": key,
-            "summary": fields.get("summary", ""),
-            "type": fields.get("issuetype", {}).get("name", ""),
-            "status": fields.get("status", {}).get("name", ""),
-            "description": _adf_to_text(fields.get("description")),
-            "labels": fields.get("labels") or [],
-            "components": [item.get("name", "") for item in fields.get("components") or [] if item.get("name")],
-            "fix_versions": [item.get("name", "") for item in fields.get("fixVersions") or [] if item.get("name")],
-        }
 
-    def get_issues(self, urls: list[str]) -> list[dict]:
-        grouped = _parse_jira_urls(urls)
-        return [self.get_issue(base_url, key) for base_url, keys in grouped.items() for key in keys]
+def _issue_from_payload(data: dict) -> dict:
+    fields = data.get("fields") or {}
+    issue_type = fields.get("issuetype") or {}
+    return {
+        "key": data.get("key", ""),
+        "summary": fields.get("summary", ""),
+        "type": issue_type.get("name", ""),
+        "is_epic": _is_epic(issue_type),
+        "status": (fields.get("status") or {}).get("name", ""),
+        "description": _adf_to_text(fields.get("description")),
+        "labels": fields.get("labels") or [],
+        "components": [item.get("name", "") for item in fields.get("components") or [] if item.get("name")],
+        "fix_versions": [item.get("name", "") for item in fields.get("fixVersions") or [] if item.get("name")],
+    }
+
+
+def _is_epic(issue_type: dict) -> bool:
+    if issue_type.get("hierarchyLevel") == _EPIC_HIERARCHY_LEVEL:
+        return True
+    return str(issue_type.get("name", "")).strip().lower() in _EPIC_TYPE_NAMES
 
 
 def _parse_jira_urls(urls: list[str]) -> dict[str, list[str]]:
@@ -277,6 +347,24 @@ def _github_prompt(
     return f"Репозиторий: {owner}/{repo}\nПериод: с {date_from} по {date_to}\n\nКоммиты:\n{lines}\n\n{_instructions(output_type)}"
 
 
+def _jira_issue_block(issue: dict, indent: str = "", description_limit: int = 0) -> str:
+    meta = [f"тип: {issue.get('type', '')}", f"статус: {issue.get('status', '')}"]
+    if issue.get("fix_versions"):
+        meta.append(f"fixVersion: {', '.join(issue['fix_versions'])}")
+    if issue.get("components"):
+        meta.append(f"компоненты: {', '.join(issue['components'])}")
+    if issue.get("labels"):
+        meta.append(f"labels: {', '.join(issue['labels'])}")
+    block = f"{indent}- [{issue['key']}] ({'; '.join(meta)}) {issue.get('summary', '')}"
+    description = issue.get("description", "").strip()
+    if description_limit and len(description) > description_limit:
+        description = description[:description_limit].rstrip() + " …"
+    if description:
+        nested = f"\n{indent}  "
+        block += f"{nested}Описание:{nested}{description.replace(chr(10), nested)}"
+    return block
+
+
 def _jira_prompt(
     issues: list[dict],
     output_type: OutputType = "release_notes",
@@ -284,17 +372,14 @@ def _jira_prompt(
 ) -> str:
     blocks = []
     for issue in issues:
-        meta = [f"тип: {issue.get('type', '')}", f"статус: {issue.get('status', '')}"]
-        if issue.get("fix_versions"):
-            meta.append(f"fixVersion: {', '.join(issue['fix_versions'])}")
-        if issue.get("components"):
-            meta.append(f"компоненты: {', '.join(issue['components'])}")
-        if issue.get("labels"):
-            meta.append(f"labels: {', '.join(issue['labels'])}")
-        block = f"- [{issue['key']}] ({'; '.join(meta)}) {issue.get('summary', '')}"
-        description = issue.get("description", "").strip()
-        if description:
-            block += f"\n  Описание:\n  {description.replace(chr(10), chr(10) + '  ')}"
+        block = _jira_issue_block(issue)
+        children = issue.get("children") or []
+        if children:
+            child_blocks = "\n".join(
+                _jira_issue_block(child, indent="    ", description_limit=_CHILD_DESCRIPTION_LIMIT)
+                for child in children
+            )
+            block += f"\n  Дочерние задачи эпика:\n{child_blocks}"
         blocks.append(block)
 
     lines = "\n".join(blocks)

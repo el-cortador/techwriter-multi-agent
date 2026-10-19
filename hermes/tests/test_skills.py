@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import struct
 
@@ -351,6 +351,97 @@ paths:
         self.assertNotIn("JIRA_API_TOKEN", messages[404])
         self.assertIn("Browse Projects", messages[403])
         self.assertIn("ABC-123", messages[404])
+
+    def test_release_notes_detector_ignores_mention_and_request_phrase(self) -> None:
+        self.assertFalse(release_notes._looks_like_release_notes("<@123456789> сделай release notes по эпикам:"))
+        self.assertFalse(release_notes._looks_like_release_notes("Release notes для релиза 1.8\n-\n-"))
+        self.assertFalse(release_notes._looks_like_release_notes(""))
+
+    def test_release_notes_detector_accepts_pasted_draft(self) -> None:
+        draft = "- Добавлен конструктор парсеров.\n- Добавлен JSON-парсер для Aqua."
+
+        self.assertTrue(release_notes._looks_like_release_notes(draft))
+        self.assertTrue(release_notes._looks_like_release_notes("Сопоставь с задачами: Добавлен экспорт."))
+
+    def test_generate_jira_with_request_phrase_uses_release_notes_template(self) -> None:
+        issue = {"key": "ABC-1", "summary": "Конструктор парсеров", "type": "Epic", "status": "Done"}
+        with (
+            patch.object(release_notes, "JiraClient") as client,
+            patch.object(release_notes, "_llm_generate", return_value="notes") as generate,
+        ):
+            client.return_value.get_issues.return_value = [issue]
+            release_notes.generate_jira(
+                ["https://example.atlassian.net/browse/ABC-1"],
+                release_notes_text="<@123456789> сделай release notes по эпикам",
+            )
+
+        prompt = generate.call_args.args[0]
+        self.assertIn("Что изменилось для пользователя:", prompt)
+        self.assertNotIn("Актуальные Release Notes", prompt)
+
+    def test_issue_payload_detects_epic_and_skips_release_date(self) -> None:
+        issue = release_notes._issue_from_payload(
+            {
+                "key": "ABC-1",
+                "fields": {
+                    "summary": "Конструктор парсеров",
+                    "issuetype": {"name": "Эпик", "hierarchyLevel": 1},
+                    "fixVersions": [{"name": "1.7", "releaseDate": "2026-08-31"}],
+                },
+            }
+        )
+
+        self.assertTrue(issue["is_epic"])
+        self.assertEqual(issue["fix_versions"], ["1.7"])
+        self.assertFalse(release_notes._is_epic({"name": "Story", "hierarchyLevel": 0}))
+
+    def test_jira_client_loads_epic_children_with_pagination(self) -> None:
+        def response(payload: dict) -> object:
+            fake = Mock()
+            fake.json.return_value = payload
+            return fake
+
+        epic = {"key": "ABC-1", "fields": {"summary": "Парсеры", "issuetype": {"name": "Epic"}}}
+        story = {"key": "ABC-2", "fields": {"summary": "Системные парсеры", "issuetype": {"name": "Story"}}}
+        linked = {"key": "ABC-3", "fields": {"summary": "Тест парсера", "issuetype": {"name": "Story"}}}
+        pages = [
+            response(epic),
+            response(linked),
+            response({"issues": [story], "nextPageToken": "next", "isLast": False}),
+            response({"issues": [linked], "isLast": True}),
+        ]
+        client = release_notes.JiraClient(email="user@example.com", api_token="token")
+        with patch.object(release_notes.http_client, "get", side_effect=pages) as get:
+            issues = client.get_issues(
+                [
+                    "https://example.atlassian.net/browse/ABC-1",
+                    "https://example.atlassian.net/browse/ABC-3",
+                ]
+            )
+
+        self.assertEqual([child["key"] for child in issues[0]["children"]], ["ABC-2"])
+        self.assertNotIn("children", issues[1])
+        search_calls = [call for call in get.call_args_list if call.args[0].endswith("/rest/api/3/search/jql")]
+        self.assertEqual(len(search_calls), 2)
+        self.assertIn("parent = ABC-1", search_calls[0].kwargs["params"]["jql"])
+        self.assertEqual(search_calls[1].kwargs["params"]["nextPageToken"], "next")
+
+    def test_jira_prompt_nests_epic_children(self) -> None:
+        epic = {
+            "key": "ABC-1",
+            "summary": "Парсеры",
+            "type": "Epic",
+            "status": "Done",
+            "children": [
+                {"key": "ABC-2", "summary": "Системные парсеры", "type": "Story", "status": "Done", "description": "x" * 2000},
+            ],
+        }
+
+        prompt = release_notes._jira_prompt([epic])
+
+        self.assertIn("Дочерние задачи эпика:\n    - [ABC-2]", prompt)
+        self.assertIn("x" * 1500 + " …", prompt)
+        self.assertNotIn("x" * 1501, prompt)
 
 
 class DocumentExtractionTest(unittest.TestCase):
