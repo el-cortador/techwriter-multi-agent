@@ -66,7 +66,14 @@ def generate_text(
             raw_response_id=response.id,
             metadata={"temperature": temperature},
         )
-    content = (response.choices[0].message.content or "").strip()
+    choice = response.choices[0]
+    content = (choice.message.content or "").strip()
+    if not content and choice.finish_reason == "length":
+        # Reasoning models can spend the whole budget on hidden reasoning tokens.
+        raise GenerationError(
+            f"LLM hit the max_tokens limit ({max_tokens or config.LLM_MAX_TOKENS}) before producing an answer. "
+            "Increase the token limit for this skill."
+        )
     if not content:
         raise GenerationError("LLM returned an empty response.")
     return content
